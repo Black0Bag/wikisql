@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"flag"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,10 +23,13 @@ import (
 )
 
 func main() {
+	configPath := flag.String("config", "config.yaml", "配置文件路径")
+	flag.Parse()
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	cfg, err := config.Load("config.yaml")
+	cfg, err := config.Load(*configPath)
 	if err != nil {
 		logger.Error("failed to load config", "err", err)
 		os.Exit(1)
@@ -57,19 +61,27 @@ func main() {
 	})
 
 	// 鉴权：启用后 /api/v1/*（除登录）与 /mcp 都需要 Bearer token
+	// API Key 模式（推荐自用）：配置 auth.api_key，所有请求直接用它当 Bearer 值，永不过期
+	// JWT 模式（多用户/公网）：配置 auth.password，登录换 token
 	if cfg.Auth.Enabled {
-		secret := cfg.Auth.JWTSecret
-		if secret == "" {
-			secret, err = auth.GenerateSecret()
-			if err != nil {
-				logger.Error("failed to generate jwt secret", "err", err)
-				os.Exit(1)
+		var authMgr *auth.Manager
+		if cfg.Auth.APIKey != "" {
+			authMgr = auth.NewAPIKeyManager(cfg.Auth.APIKey)
+			logger.Info("authentication enabled (API Key mode)", "mode", "static bearer token")
+		} else {
+			secret := cfg.Auth.JWTSecret
+			if secret == "" {
+				secret, err = auth.GenerateSecret()
+				if err != nil {
+					logger.Error("failed to generate jwt secret", "err", err)
+					os.Exit(1)
+				}
+				logger.Warn("auth.jwt_secret not set; using ephemeral secret (tokens will not survive restart)")
 			}
-			logger.Warn("auth.jwt_secret not set; using ephemeral secret (tokens will not survive restart)")
+			authMgr = auth.NewManager(secret, cfg.Auth.Password, cfg.Auth.TokenTTLHours)
+			logger.Info("authentication enabled (JWT mode)", "token_ttl_hours", cfg.Auth.TokenTTLHours)
 		}
-		authMgr := auth.NewManager(secret, cfg.Auth.Password, cfg.Auth.TokenTTLHours)
 		apiServer.SetAuth(authMgr)
-		logger.Info("authentication enabled", "token_ttl_hours", cfg.Auth.TokenTTLHours)
 	}
 
 	var kbSvc *kb.Service

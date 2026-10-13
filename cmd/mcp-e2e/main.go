@@ -18,32 +18,40 @@ import (
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8180", "kb-server 地址")
-	password := flag.String("password", os.Getenv("KB_AUTH_PASSWORD"), "登录密码")
+	password := flag.String("password", os.Getenv("KB_AUTH_PASSWORD"), "登录密码（JWT 模式）")
+	apiKey := flag.String("api-key", os.Getenv("KB_AUTH_API_KEY"), "API Key（API Key 模式，优先）")
 	flag.Parse()
 
 	base := "http://" + *addr
 
-	// 1. 登录换取 token
-	var loginResp struct {
-		Token string `json:"token"`
+	// 1. 获取凭据：API Key 模式直接用；JWT 模式走登录
+	var bearer string
+	if *apiKey != "" {
+		bearer = *apiKey
+		fmt.Println("[1] API key mode, skip login")
+	} else {
+		var loginResp struct {
+			Token string `json:"token"`
+		}
+		body, _ := json.Marshal(map[string]string{"password": *password})
+		resp, err := http.Post(base+"/api/v1/auth/login", "application/json", bytes.NewReader(body))
+		if err != nil {
+			log.Fatalf("login failed: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			log.Fatalf("login returned %d", resp.StatusCode)
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&loginResp); err != nil {
+			log.Fatalf("decode login response: %v", err)
+		}
+		bearer = loginResp.Token
+		fmt.Println("[1] login OK")
 	}
-	body, _ := json.Marshal(map[string]string{"password": *password})
-	resp, err := http.Post(base+"/api/v1/auth/login", "application/json", bytes.NewReader(body))
-	if err != nil {
-		log.Fatalf("login failed: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("login returned %d", resp.StatusCode)
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&loginResp); err != nil {
-		log.Fatalf("decode login response: %v", err)
-	}
-	fmt.Println("[1] login OK")
 
 	// 2. 连接 MCP 端点（Authorization 头注入）
 	authedClient := &http.Client{
-		Transport: bearerTransport{token: loginResp.Token},
+		Transport: bearerTransport{token: bearer},
 		Timeout:   30 * time.Second,
 	}
 	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-e2e", Version: "0.1.0"}, nil)

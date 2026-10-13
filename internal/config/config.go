@@ -53,6 +53,7 @@ type DatabaseConfig struct {
 
 type AuthConfig struct {
 	Enabled       bool   `yaml:"enabled"`
+	APIKey        string `yaml:"api_key"`
 	JWTSecret     string `yaml:"jwt_secret"`
 	TokenTTLHours int    `yaml:"token_ttl_hours"`
 	Password      string `yaml:"password"`
@@ -168,6 +169,10 @@ func applyEnvOverrides(cfg *Config) {
 		cfg.Auth.Password = v
 		cfg.Auth.Enabled = true
 	}
+	if v := os.Getenv("KB_AUTH_API_KEY"); v != "" {
+		cfg.Auth.APIKey = v
+		cfg.Auth.Enabled = true
+	}
 	if v := os.Getenv("KB_LLM_CHAT_KEY"); v != "" {
 		cfg.LLM.Chat.APIKey = v
 	}
@@ -183,8 +188,8 @@ func (c *Config) validate() error {
 	if c.Database.Path == "" {
 		return fmt.Errorf("database path must not be empty")
 	}
-	if c.Auth.Enabled && c.Auth.Password == "" {
-		return fmt.Errorf("auth enabled but password is empty; set auth.password or KB_AUTH_PASSWORD")
+	if c.Auth.Enabled && c.Auth.APIKey == "" && c.Auth.Password == "" {
+		return fmt.Errorf("auth enabled but both api_key and password are empty; set auth.api_key (recommended) or auth.password")
 	}
 	if c.isPublicHost() && !c.Auth.Enabled && !c.Server.AcknowledgeRisk {
 		msg := "server is configured to listen on a public address (" + c.Server.Host + ") without authentication; set acknowledge_risk: true in config to confirm you understand the risk"

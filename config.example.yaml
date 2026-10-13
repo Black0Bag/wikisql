@@ -14,9 +14,12 @@ database:
 
 auth:
   enabled: false
-  # 登录密码（POST /api/v1/auth/login 换取 JWT）。建议用环境变量 KB_AUTH_PASSWORD。
+  # 【推荐·自用】静态 API Key：配置后所有请求直接用它当 Bearer 值，永不过期。
+  # 例：curl -H "Authorization: Bearer <api_key>" http://host:port/api/v1/tables
+  # 也可用环境变量 KB_AUTH_API_KEY。
+  api_key: ""
+  # 【可选·多用户/公网】JWT 模式：配置 password 后走登录端点换 token（72h 过期）。
   password: ""
-  # JWT 签名密钥。留空则每次启动生成随机密钥（重启后所有 token 失效）。
   jwt_secret: ""
   token_ttl_hours: 72
 

@@ -90,6 +90,9 @@ func (s *Server) Routes() http.Handler {
 	r.Use(RateLimit(s.security.GlobalRPM))
 
 	// 公开端点
+	r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/docs", http.StatusFound)
+	}))
 	r.Get("/health", apiHandler(s.handleHealth).ServeHTTP)
 	r.Get("/openapi.json", http.HandlerFunc(ServeOpenAPI))
 	r.Get("/docs", http.HandlerFunc(ServeDocs))
@@ -108,7 +111,7 @@ func (s *Server) Routes() http.Handler {
 		if loginRPM <= 0 {
 			loginRPM = 5
 		}
-		if s.authMgr != nil {
+		if s.authMgr != nil && !s.authMgr.IsAPIKeyMode() {
 			r.With(RateLimitStrict(loginRPM)).Post("/auth/login", s.authMgr.LoginHandler().ServeHTTP)
 		}
 

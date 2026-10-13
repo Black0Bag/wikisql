@@ -23,6 +23,7 @@ var (
 type Manager struct {
 	secret   []byte
 	password string
+	apiKey   string
 	ttl      time.Duration
 }
 
@@ -36,6 +37,18 @@ func NewManager(secret, password string, ttlHours int) *Manager {
 		ttl:      time.Duration(ttlHours) * time.Hour,
 	}
 }
+
+// NewAPIKeyManager 创建静态 API Key 模式的管理器：配置里写一次 key，
+// 所有请求直接用这个 key 当 Bearer 值，不过期不刷新，自用最简。
+func NewAPIKeyManager(apiKey string) *Manager {
+	return &Manager{
+		apiKey: apiKey,
+		secret: []byte(apiKey),
+		ttl:    0,
+	}
+}
+
+func (m *Manager) IsAPIKeyMode() bool { return m.apiKey != "" }
 
 // GenerateSecret 生成 256 位随机密钥（jwt_secret 未配置时的进程级默认值，
 // 重启后失效，所有已发 token 作废）。
@@ -76,6 +89,10 @@ func (m *Manager) Verify(tokenString string) error {
 
 func (m *Manager) checkPassword(password string) bool {
 	return subtle.ConstantTimeCompare([]byte(password), []byte(m.password)) == 1
+}
+
+func (m *Manager) checkAPIKey(key string) bool {
+	return m.apiKey != "" && subtle.ConstantTimeCompare([]byte(key), []byte(m.apiKey)) == 1
 }
 
 type loginRequest struct {
@@ -123,12 +140,20 @@ func (m *Manager) LoginHandler() http.Handler {
 	})
 }
 
-// Middleware 校验 Authorization: Bearer 头，通过后放行。
+// Middleware 校验 Authorization: Bearer 头。API Key 模式直接比对静态值；JWT 模式验签。
 func (m *Manager) Middleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := bearerToken(r)
-			if token == "" || m.Verify(token) != nil {
+
+			var authorized bool
+			if m.apiKey != "" {
+				authorized = m.checkAPIKey(token)
+			} else {
+				authorized = token != "" && m.Verify(token) == nil
+			}
+
+			if !authorized {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="kb-server"`)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
