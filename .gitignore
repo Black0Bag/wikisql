@@ -1,0 +1,25 @@
+config.yaml
+data/
+*.db
+*.db-wal
+*.db-shm
+/tmp/
+
+# 敏感信息
+config.yaml
+*.key
+*.pem
+credentials*
+router-credentials*
+
+# 测试与临时
+/tmp/
+/tmp/repro/
+fake_openai.py
+*.tmp
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.aicode/memory/

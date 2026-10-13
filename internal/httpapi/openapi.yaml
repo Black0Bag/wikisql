@@ -1,0 +1,243 @@
+openapi: 3.1.0
+info:
+  title: KB Server
+  version: 0.1.0
+  description: |
+    个人自托管的一体化数据底座：SQLite 数据库服务 + 知识库。
+    通用表操作接口面向上层组件（网盘、博客等）；知识库接口提供中文分词检索、
+    向量语义检索、RRF 融合与带引用问答。另在 /mcp 提供 MCP（Model Context Protocol）
+    端点，供外部 agent 调用相同能力。
+servers:
+  - url: http://127.0.0.1:8080
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      summary: 存活探测
+      security: []
+      responses:
+        '200':
+          description: 服务正常
+  /api/v1/auth/login:
+    post:
+      summary: 登录换取 JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  expires_at: { type: string, format: date-time }
+                  token_type: { type: string }
+        '401': { description: 密码错误 }
+  /api/v1/tables:
+    get:
+      summary: 列出所有用户表
+      responses:
+        '200':
+          description: 表名列表
+  /api/v1/tables/{name}/schema:
+    get:
+      summary: 查看建表语句
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: DDL }
+  /api/v1/query:
+    post:
+      summary: 结构化表操作（select/insert/update/delete）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [table, operation]
+              properties:
+                table: { type: string }
+                operation: { type: string, enum: [select, insert, update, delete] }
+                columns: { type: array, items: { type: string } }
+                values: { type: object, additionalProperties: true }
+                where: { type: object, additionalProperties: true }
+                order_by: { type: string }
+                limit: { type: integer }
+                offset: { type: integer }
+      responses:
+        '200': { description: 操作结果 }
+        '400': { description: 参数校验失败（含注入拦截） }
+  /api/v1/tables/{name}/rows:
+    get:
+      summary: 列出行
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: offset, in: query, schema: { type: integer } }
+        - { name: order_by, in: query, schema: { type: string } }
+      responses:
+        '200': { description: 行数据 }
+    post:
+      summary: 插入一行
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '201': { description: 已插入 }
+  /api/v1/tables/{name}/rows/{rowid}:
+    get:
+      summary: 读取一行
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+        - { name: rowid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 行数据 }
+        '404': { description: 不存在 }
+    put:
+      summary: 更新一行
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+        - { name: rowid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: 已更新 }
+    delete:
+      summary: 删除一行
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+        - { name: rowid, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 已删除 }
+  /api/v1/kb/collections:
+    get:
+      summary: 列出知识库集合
+      responses:
+        '200': { description: 集合列表 }
+    post:
+      summary: 创建集合
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+      responses:
+        '201': { description: 已创建 }
+  /api/v1/kb/collections/{id}:
+    delete:
+      summary: 删除集合并清空其索引
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 已删除 }
+  /api/v1/kb/collections/{id}/documents:
+    post:
+      summary: 入库文档（JSON 文本或 multipart 文件），走完整索引流水线
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                title: { type: string }
+                content: { type: string }
+      responses:
+        '201': { description: 入库结果（含状态与分块数） }
+  /api/v1/kb/documents/{id}:
+    get:
+      summary: 查询文档状态
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 文档信息 }
+    delete:
+      summary: 删除文档并清理索引
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 已删除 }
+  /api/v1/kb/documents/{id}/retry:
+    post:
+      summary: 重试失败的入库
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: 重试结果 }
+  /api/v1/kb/search:
+    post:
+      summary: 混合检索（全文 + 向量，RRF 融合）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string }
+                collection_ids: { type: array, items: { type: integer } }
+                top_k: { type: integer, default: 5 }
+                mode: { type: string, enum: [hybrid, keyword, semantic], default: hybrid }
+                rewrite: { type: boolean, description: LLM 查询改写（增强档） }
+                rerank: { type: boolean, description: LLM 重排（增强档） }
+                expand_context: { type: boolean, description: 拼接相邻块上下文 }
+      responses:
+        '200': { description: 检索结果（含引用信息） }
+  /api/v1/kb/chat:
+    post:
+      summary: 基于知识库的问答（回答带 [n] 引用）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string }
+                collection_ids: { type: array, items: { type: integer } }
+      responses:
+        '200': { description: 回答与引用 }
+  /mcp:
+    post:
+      summary: MCP 端点（Model Context Protocol，Streamable HTTP）
+      description: |
+        供外部 agent 通过 MCP 协议调用。工具：db_list_tables、db_get_schema、db_select、
+        kb_search、kb_chat、kb_list_collections；写工具 db_insert/db_update/db_delete
+        需配置 mcp.allow_writes: true。
+      responses:
+        '200': { description: JSON-RPC 响应 }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

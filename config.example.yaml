@@ -1,0 +1,57 @@
+server:
+  host: "127.0.0.1"
+  port: 8080
+  # 对外暴露时改 host 为 "0.0.0.0" 并强烈建议启用鉴权与 TLS：
+  # tls_cert_file: "/path/to/cert.pem"
+  # tls_key_file: "/path/to/key.pem"
+  # 公网监听且未启用鉴权时，必须显式确认风险：
+  # acknowledge_risk: true
+
+database:
+  path: "data/main.db"
+  backup_dir: "data/backups"
+  backup_interval_hours: 24
+
+auth:
+  enabled: false
+  # 登录密码（POST /api/v1/auth/login 换取 JWT）。建议用环境变量 KB_AUTH_PASSWORD。
+  password: ""
+  # JWT 签名密钥。留空则每次启动生成随机密钥（重启后所有 token 失效）。
+  jwt_secret: ""
+  token_ttl_hours: 72
+
+files:
+  dir: "data/files"
+  max_inline_size_bytes: 262144
+
+health:
+  check_interval_minutes: 30
+
+# 外部模型（OpenAI 兼容接口，多家供应商可切换）
+llm:
+  chat:
+    provider: "openai"
+    base_url: "https://api.openai.com/v1"
+    api_key: ""               # 建议用环境变量 KB_LLM_CHAT_KEY 覆盖
+    model: "gpt-4o-mini"
+  embedding:
+    provider: "openai"
+    base_url: "https://api.openai.com/v1"
+    api_key: ""               # 建议用环境变量 KB_LLM_EMBED_KEY 覆盖
+    model: "text-embedding-3-small"
+
+kb:
+  chunk_max_runes: 1000       # 分块上限（按字符数，约 512 token）
+  embed_batch_size: 32        # 嵌入批大小
+  context_headers: false      # Anthropic Contextual Retrieval 开关（开启增加 LLM 成本）
+
+# MCP 端点（/mcp，供外部 agent 调用）
+mcp:
+  enabled: true
+  allow_writes: false         # db_insert/db_update/db_delete 工具开关
+
+# 公网防护
+security:
+  max_body_bytes: 67108864    # 请求体上限（64MB）
+  global_rate_per_min: 120    # 全局限流（每 IP 每分钟）
+  login_rate_per_min: 5       # 登录限流（每 IP 每分钟）
