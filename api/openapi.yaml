@@ -226,6 +226,16 @@ paths:
                 collection_ids: { type: array, items: { type: integer } }
       responses:
         '200': { description: 回答与引用 }
+  /admin:
+    get:
+      summary: 管理面板（Web 配置界面，独立密码登录）
+      description: |
+        浏览器访问 /admin 打开管理面板：查看服务状态、在线修改全部配置、
+        修改管理密码、重启服务。使用独立的密码 + 会话 Cookie 鉴权，
+        与 API Key 无关。初始密码见服务首次启动日志。
+      security: []
+      responses:
+        '200': { description: 管理面板 HTML 页面 }
   /mcp:
     post:
       summary: MCP 端点（Model Context Protocol，Streamable HTTP）
