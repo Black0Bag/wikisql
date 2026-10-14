@@ -2,10 +2,13 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func testLogger() *slog.Logger {
@@ -173,5 +176,98 @@ func TestIntegrityCheck(t *testing.T) {
 	}
 	if result != "ok" {
 		t.Errorf("expected 'ok', got %q", result)
+	}
+}
+
+func TestBackupDedup(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	backupDir := filepath.Join(t.TempDir(), "backups")
+
+	// 第一次备份：应该成功
+	path1, err := s.Backup(ctx, backupDir)
+	if err != nil {
+		t.Fatalf("first backup: %v", err)
+	}
+
+	// 立即再备份：应该被去重跳过，返回同一路径
+	path2, err := s.Backup(ctx, backupDir)
+	if err != nil {
+		t.Fatalf("second backup: %v", err)
+	}
+	if path1 != path2 {
+		t.Errorf("expected dedup (same path), got %s and %s", path1, path2)
+	}
+
+	// 备份目录中应该只有一个文件
+	entries, _ := os.ReadDir(backupDir)
+	dbCount := 0
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".db") {
+			dbCount++
+		}
+	}
+	if dbCount != 1 {
+		t.Errorf("expected 1 backup file after dedup, got %d", dbCount)
+	}
+}
+
+func TestPruneBackups(t *testing.T) {
+	s := testStore(t)
+
+	backupDir := filepath.Join(t.TempDir(), "backups")
+	os.MkdirAll(backupDir, 0750)
+
+	// 创建 10 个假备份文件（不同时间戳）
+	for i := 0; i < 10; i++ {
+		ts := time.Now().Add(-time.Duration(i) * time.Hour).Format("20060102-150405")
+		f := filepath.Join(backupDir, fmt.Sprintf("backup-%s.db", ts))
+		os.WriteFile(f, []byte("fake"), 0644)
+		// 设置不同的修改时间
+		modTime := time.Now().Add(-time.Duration(i) * time.Hour)
+		os.Chtimes(f, modTime, modTime)
+	}
+
+	// 保留最近 3 份
+	removed, err := s.PruneBackups(backupDir, 3)
+	if err != nil {
+		t.Fatalf("PruneBackups: %v", err)
+	}
+	if removed != 7 {
+		t.Errorf("expected 7 removed, got %d", removed)
+	}
+
+	entries, _ := os.ReadDir(backupDir)
+	dbCount := 0
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".db") {
+			dbCount++
+		}
+	}
+	if dbCount != 3 {
+		t.Errorf("expected 3 remaining, got %d", dbCount)
+	}
+}
+
+func TestResolveBackupDirRelative(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "sub", "test.db")
+	os.MkdirAll(filepath.Dir(dbPath), 0750)
+	s, err := New(dbPath, testLogger())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer s.Close()
+
+	// 相对路径应该解析到数据库文件所在目录下
+	resolved := s.resolveBackupDir("data/backups")
+	expected := filepath.Join(filepath.Dir(dbPath), "data/backups")
+	if resolved != expected {
+		t.Errorf("expected %s, got %s", expected, resolved)
+	}
+	// 确保不是解析到 cwd
+	if !strings.HasPrefix(resolved, dir) {
+		t.Errorf("resolved path should be under %s, got %s", dir, resolved)
 	}
 }

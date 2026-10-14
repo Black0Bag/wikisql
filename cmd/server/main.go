@@ -44,9 +44,17 @@ func main() {
 
 	logger.Info("database opened", "path", cfg.Database.Path)
 
+	// 启动备份（内置 10 分钟去重，防止重启风暴导致备份泛滥）
 	if _, err := s.Backup(context.Background(), cfg.Database.BackupDir); err != nil {
 		logger.Warn("initial backup failed", "err", err)
 	}
+	// 清理旧备份，保留最近 7 份
+	if removed, err := s.PruneBackups(cfg.Database.BackupDir, 7); err != nil {
+		logger.Warn("backup prune failed", "err", err)
+	} else if removed > 0 {
+		logger.Info("startup backup prune", "removed", removed)
+	}
+
 
 	checker := health.New(s, cfg.Database.BackupDir, cfg.Files.Dir, cfg.Health.CheckIntervalMinutes, logger)
 	checker.Start()
@@ -154,6 +162,31 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// 定时备份（按 backup_interval_hours 配置，默认 24 小时）
+	if cfg.Database.BackupInterval > 0 {
+		go func() {
+			interval := time.Duration(cfg.Database.BackupInterval) * time.Hour
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					if _, err := s.Backup(context.Background(), cfg.Database.BackupDir); err != nil {
+						logger.Warn("scheduled backup failed", "err", err)
+					}
+					if removed, err := s.PruneBackups(cfg.Database.BackupDir, 7); err != nil {
+						logger.Warn("scheduled prune failed", "err", err)
+					} else if removed > 0 {
+						logger.Info("scheduled prune", "removed", removed)
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+		logger.Info("scheduled backup enabled", "interval_hours", cfg.Database.BackupInterval)
+	}
 
 	go func() {
 		logger.Info("listening", "addr", cfg.ListenAddr(), "tls", cfg.IsTLS())

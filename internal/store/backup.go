@@ -5,12 +5,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 )
 
+// Backup 执行在线备份。backupDir 为相对路径时基于数据库文件所在目录解析
+//（而非进程 cwd，防止 init.d/procd 启动时备份散落到根目录）。
+// 若备份目录中最近一次备份距现在不足 minBackupInterval，则跳过并返回已有路径。
 func (s *Store) Backup(ctx context.Context, backupDir string) (string, error) {
+	backupDir = s.resolveBackupDir(backupDir)
 	if err := mkdirAll(backupDir); err != nil {
 		return "", fmt.Errorf("creating backup directory: %w", err)
+	}
+
+	// 去重：防止重启风暴导致备份泛滥
+	if recent, err := s.findRecentBackup(backupDir, minBackupInterval); err == nil && recent != "" {
+		s.logger.Info("backup skipped, recent backup exists", "path", recent)
+		return recent, nil
 	}
 
 	ts := time.Now().Format("20060102-150405")
@@ -36,6 +48,86 @@ func (s *Store) Backup(ctx context.Context, backupDir string) (string, error) {
 	}
 
 	return backupPath, nil
+}
+
+const minBackupInterval = 10 * time.Minute
+
+// resolveBackupDir 将相对路径解析为数据库文件所在目录下的路径。
+// 防止 cwd 不对时备份散落到根目录 /data。
+func (s *Store) resolveBackupDir(backupDir string) string {
+	if filepath.IsAbs(backupDir) {
+		return backupDir
+	}
+	// 相对路径：基于数据库文件所在目录解析
+	dbDir := filepath.Dir(s.dbPath)
+	return filepath.Join(dbDir, backupDir)
+}
+
+// findRecentBackup 检查备份目录中是否有指定时间内的备份文件。
+func (s *Store) findRecentBackup(backupDir string, within time.Duration) (string, error) {
+	entries, err := os.ReadDir(backupDir)
+	if err != nil {
+		return "", err
+	}
+	cutoff := time.Now().Add(-within)
+	var newest string
+	var newestTime time.Time
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), "backup-") || !strings.HasSuffix(e.Name(), ".db") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(cutoff) && info.ModTime().After(newestTime) {
+			newest = filepath.Join(backupDir, e.Name())
+			newestTime = info.ModTime()
+		}
+	}
+	return newest, nil
+}
+
+// PruneBackups 保留最近 keep 份备份，删除更旧的。防止备份无限增长撑满磁盘。
+func (s *Store) PruneBackups(backupDir string, keep int) (removed int, err error) {
+	backupDir = s.resolveBackupDir(backupDir)
+	entries, err := os.ReadDir(backupDir)
+	if err != nil {
+		return 0, fmt.Errorf("reading backup directory: %w", err)
+	}
+
+	type backupFile struct {
+		path    string
+		modTime time.Time
+	}
+	var files []backupFile
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), "backup-") || !strings.HasSuffix(e.Name(), ".db") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, backupFile{filepath.Join(backupDir, e.Name()), info.ModTime()})
+	}
+
+	if len(files) <= keep {
+		return 0, nil
+	}
+
+	sort.Slice(files, func(i, j int) bool { return files[i].modTime.After(files[j].modTime) })
+	for _, f := range files[keep:] {
+		if err := os.Remove(f.path); err != nil {
+			s.logger.Warn("failed to remove old backup", "path", f.path, "err", err)
+			continue
+		}
+		removed++
+	}
+	if removed > 0 {
+		s.logger.Info("pruned old backups", "removed", removed, "kept", keep)
+	}
+	return removed, nil
 }
 
 func (s *Store) LastBackupTime(ctx context.Context) (time.Time, error) {
