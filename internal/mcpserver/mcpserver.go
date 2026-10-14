@@ -9,8 +9,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/aicode/kb-server/internal/kb"
-	"github.com/aicode/kb-server/internal/table"
+	"github.com/Black0Bag/wikisql/internal/kb"
+	"github.com/Black0Bag/wikisql/internal/table"
 )
 
 type Config struct {
@@ -26,7 +26,7 @@ type Server struct {
 
 func New(tables *table.Service, kbSvc *kb.Service, cfg Config, logger *slog.Logger) *Server {
 	s := &Server{
-		mcp:    mcp.NewServer(&mcp.Implementation{Name: "kb-server", Version: "0.1.0"}, nil),
+		mcp:    mcp.NewServer(&mcp.Implementation{Name: "wikisql", Version: "0.2.0"}, nil),
 		tables: tables,
 		kb:     kbSvc,
 		logger: logger,
@@ -91,7 +91,7 @@ func (s *Server) register(allowWrites bool) {
 
 	// ── 数据库工具 ──
 
-	tool("db_list_tables", "列出数据库中所有用户表（不含 SQLite 内部表）。",
+	tool("db_list_tables", "列出数据库中所有用户表（不含 SQLite 内部表与全文/向量索引的影子表）。",
 		`{"type":"object","properties":{}}`,
 		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			tables, err := s.tables.ListTables(ctx)
@@ -112,13 +112,16 @@ func (s *Server) register(allowWrites bool) {
 			return s.jsonResult(map[string]any{"table": getString(args, "table"), "schema": schema})
 		})
 
-	tool("db_select", "按条件查询任意表（只读）。默认最多返回 50 行。",
+	tool("db_select", "按条件查询任意表（只读）。默认最多返回 50 行，单次上限 200 行。",
 		`{"type":"object","properties":{"table":{"type":"string","description":"表名"},"columns":{"type":"array","items":{"type":"string"},"description":"要返回的列，留空返回全部"},"where":{"type":"object","description":"等值过滤条件"},"order_by":{"type":"string","description":"排序字段"},"limit":{"type":"integer","description":"返回行数上限，默认 50"}},"required":["table"]}`,
 		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			args := getArgs(req)
 			limit := int(getFloat(args, "limit"))
 			if limit <= 0 {
 				limit = 50
+			}
+			if limit > 200 {
+				limit = 200 // MCP 响应体积保护：单次最多 200 行
 			}
 			var columns []string
 			for _, c := range getSlice(args, "columns") {

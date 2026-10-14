@@ -203,20 +203,51 @@ func (s *Store) RecordHealthCheck(ctx context.Context, checkName, status, severi
 
 func (s *Store) ListTables(ctx context.Context) ([]string, error) {
 	rows, err := s.reader.QueryContext(ctx,
-		`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`,
+		`SELECT name, COALESCE(sql, '') FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var tables []string
+	// 先收集全部表和虚拟表名，再过滤虚拟表的影子表。
+	// FTS5 影子表（_data/_idx/_content/_docsize/_config）与 vec0 影子表
+	// （_chunks/_rowids/_info/_vector_chunks*）是实现细节，不应暴露给使用者。
+	type tableInfo struct {
+		name      string
+		virtualID string // 所属虚拟表名（影子表）或自身名（虚拟表/普通表）
+	}
+	var infos []tableInfo
+	var vtabNames []string
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
+		var name, sql string
+		if err := rows.Scan(&name, &sql); err != nil {
 			return nil, err
 		}
-		tables = append(tables, name)
+		if strings.Contains(strings.ToUpper(sql), "VIRTUAL TABLE") {
+			vtabNames = append(vtabNames, name)
+			infos = append(infos, tableInfo{name: name, virtualID: name})
+		} else {
+			infos = append(infos, tableInfo{name: name})
+		}
+	}
+
+	var tables []string
+	for _, info := range infos {
+		if info.virtualID != "" {
+			tables = append(tables, info.name)
+			continue
+		}
+		isShadow := false
+		for _, v := range vtabNames {
+			if strings.HasPrefix(info.name, v+"_") {
+				isShadow = true
+				break
+			}
+		}
+		if !isShadow {
+			tables = append(tables, info.name)
+		}
 	}
 	return tables, nil
 }

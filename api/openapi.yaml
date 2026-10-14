@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: KB Server
+  title: wikisql
   version: 0.1.0
   description: |
     个人自托管的一体化数据底座：SQLite 数据库服务 + 知识库。

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aicode/kb-server/internal/store"
+	"github.com/Black0Bag/wikisql/internal/store"
 )
 
 type Checker struct {

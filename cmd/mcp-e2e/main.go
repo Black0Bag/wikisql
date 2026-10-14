@@ -17,9 +17,9 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "127.0.0.1:8180", "kb-server 地址")
-	password := flag.String("password", os.Getenv("KB_AUTH_PASSWORD"), "登录密码（JWT 模式）")
-	apiKey := flag.String("api-key", os.Getenv("KB_AUTH_API_KEY"), "API Key（API Key 模式，优先）")
+	addr := flag.String("addr", "127.0.0.1:8180", "wikisql 地址")
+	password := flag.String("password", os.Getenv("WIKISQL_AUTH_PASSWORD"), "登录密码（JWT 模式）")
+	apiKey := flag.String("api-key", os.Getenv("WIKISQL_AUTH_API_KEY"), "API Key（API Key 模式，优先）")
 	flag.Parse()
 
 	base := "http://" + *addr

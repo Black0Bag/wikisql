@@ -258,7 +258,7 @@ golang-jwt/jwt/v5（v5.3.1，15000+ 项目引用）是 Go 生态 JWT 事实标�
 
 签名算法选择（auth0 官方指南结论）：HMAC/HS256 适用于「单一服务、自己签发自己验证」——正是本项目场景。RS256/JWKS 那套是给多服务/第三方身份提供方的，不需要。
 
-单用户登录端点设计：POST /api/v1/auth/login {password} → 发 HS256 签名 token（sub=owner, exp=可配置 TTL）。密码用 crypto/subtle 恒定时间比较；密码只走配置或环境变量（KB_AUTH_PASSWORD）。2026 年最佳实践提但刷新令牌轮换（refresh token rotation）——多用户场景必要；单用户个人服务用「长 TTL + 过期重登」更简单可靠，不引入刷新链路。登录端点限流必须做。
+单用户登录端点设计：POST /api/v1/auth/login {password} → 发 HS256 签名 token（sub=owner, exp=可配置 TTL）。密码用 crypto/subtle 恒定时间比较；密码只走配置或环境变量（WIKISQL_AUTH_PASSWORD）。2026 年最佳实践提但刷新令牌轮换（refresh token rotation）——多用户场景必要；单用户个人服务用「长 TTL + 过期重登」更简单可靠，不引入刷新链路。登录端点限流必须做。
 
 ### 19. MCP：官方 Go SDK 已成熟（重大利好）
 

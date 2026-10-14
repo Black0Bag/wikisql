@@ -11,15 +11,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aicode/kb-server/internal/config"
-	"github.com/aicode/kb-server/internal/auth"
-	"github.com/aicode/kb-server/internal/health"
-	"github.com/aicode/kb-server/internal/kb"
-	"github.com/aicode/kb-server/internal/llm"
-	"github.com/aicode/kb-server/internal/mcpserver"
-	"github.com/aicode/kb-server/internal/httpapi"
-	"github.com/aicode/kb-server/internal/store"
-	"github.com/aicode/kb-server/internal/table"
+	"github.com/Black0Bag/wikisql/internal/config"
+	"github.com/Black0Bag/wikisql/internal/auth"
+	"github.com/Black0Bag/wikisql/internal/health"
+	"github.com/Black0Bag/wikisql/internal/kb"
+	"github.com/Black0Bag/wikisql/internal/llm"
+	"github.com/Black0Bag/wikisql/internal/mcpserver"
+	"github.com/Black0Bag/wikisql/internal/httpapi"
+	"github.com/Black0Bag/wikisql/internal/store"
+	"github.com/Black0Bag/wikisql/internal/table"
 )
 
 func main() {

@@ -1,4 +1,4 @@
-module github.com/aicode/kb-server
+module github.com/Black0Bag/wikisql
 
 go 1.27.1
 

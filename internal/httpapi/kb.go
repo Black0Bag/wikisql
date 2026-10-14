@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/aicode/kb-server/internal/kb"
+	"github.com/Black0Bag/wikisql/internal/kb"
 	"github.com/go-chi/chi/v5"
 )
 

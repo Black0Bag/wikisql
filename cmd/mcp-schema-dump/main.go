@@ -20,7 +20,7 @@ func (b bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func main() {
 	base := "http://" + os.Args[1]
-	token := os.Getenv("KB_AUTH_API_KEY")
+	token := os.Getenv("WIKISQL_AUTH_API_KEY")
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "schema-dump", Version: "1.0"}, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

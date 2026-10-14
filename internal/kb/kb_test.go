@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/aicode/kb-server/internal/llm"
-	"github.com/aicode/kb-server/internal/store"
+	"github.com/Black0Bag/wikisql/internal/llm"
+	"github.com/Black0Bag/wikisql/internal/store"
 )
 
 // fakeEmbedder 返回确定性向量：文本长度决定首元素，可稳定验证检索排序。

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aicode/kb-server/internal/store"
+	"github.com/Black0Bag/wikisql/internal/store"
 )
 
 type Service struct {

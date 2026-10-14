@@ -10,8 +10,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/1Vewton/textsplitter/recursivesplitter"
-	"github.com/aicode/kb-server/internal/llm"
-	"github.com/aicode/kb-server/internal/store"
+	"github.com/Black0Bag/wikisql/internal/llm"
+	"github.com/Black0Bag/wikisql/internal/store"
 )
 
 type Options struct {

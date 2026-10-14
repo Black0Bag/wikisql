@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/aicode/kb-server/internal/auth"
-	"github.com/aicode/kb-server/internal/kb"
-	"github.com/aicode/kb-server/internal/store"
-	"github.com/aicode/kb-server/internal/table"
+	"github.com/Black0Bag/wikisql/internal/auth"
+	"github.com/Black0Bag/wikisql/internal/kb"
+	"github.com/Black0Bag/wikisql/internal/store"
+	"github.com/Black0Bag/wikisql/internal/table"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )

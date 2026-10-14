@@ -149,34 +149,34 @@ func Load(path string) (*Config, error) {
 }
 
 func applyEnvOverrides(cfg *Config) {
-	if v := os.Getenv("KB_SERVER_HOST"); v != "" {
+	if v := os.Getenv("WIKISQL_SERVER_HOST"); v != "" {
 		cfg.Server.Host = v
 	}
-	if v := os.Getenv("KB_SERVER_PORT"); v != "" {
+	if v := os.Getenv("WIKISQL_SERVER_PORT"); v != "" {
 		var port int
 		if _, err := fmt.Sscanf(v, "%d", &port); err == nil && port > 0 {
 			cfg.Server.Port = port
 		}
 	}
-	if v := os.Getenv("KB_DB_PATH"); v != "" {
+	if v := os.Getenv("WIKISQL_DB_PATH"); v != "" {
 		cfg.Database.Path = v
 	}
-	if v := os.Getenv("KB_AUTH_SECRET"); v != "" {
+	if v := os.Getenv("WIKISQL_AUTH_SECRET"); v != "" {
 		cfg.Auth.JWTSecret = v
 		cfg.Auth.Enabled = true
 	}
-	if v := os.Getenv("KB_AUTH_PASSWORD"); v != "" {
+	if v := os.Getenv("WIKISQL_AUTH_PASSWORD"); v != "" {
 		cfg.Auth.Password = v
 		cfg.Auth.Enabled = true
 	}
-	if v := os.Getenv("KB_AUTH_API_KEY"); v != "" {
+	if v := os.Getenv("WIKISQL_AUTH_API_KEY"); v != "" {
 		cfg.Auth.APIKey = v
 		cfg.Auth.Enabled = true
 	}
-	if v := os.Getenv("KB_LLM_CHAT_KEY"); v != "" {
+	if v := os.Getenv("WIKISQL_LLM_CHAT_KEY"); v != "" {
 		cfg.LLM.Chat.APIKey = v
 	}
-	if v := os.Getenv("KB_LLM_EMBED_KEY"); v != "" {
+	if v := os.Getenv("WIKISQL_LLM_EMBED_KEY"); v != "" {
 		cfg.LLM.Embedding.APIKey = v
 	}
 }

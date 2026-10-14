@@ -65,7 +65,7 @@ func (m *Manager) Issue(ctx context.Context) (token string, expiresAt time.Time,
 	exp := now.Add(m.ttl)
 	claims := jwt.RegisteredClaims{
 		Subject:   "owner",
-		Issuer:    "kb-server",
+		Issuer:    "wikisql",
 		IssuedAt:  jwt.NewNumericDate(now),
 		ExpiresAt: jwt.NewNumericDate(exp),
 	}
@@ -80,7 +80,7 @@ func (m *Manager) Issue(ctx context.Context) (token string, expiresAt time.Time,
 func (m *Manager) Verify(tokenString string) error {
 	_, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
 		return m.secret, nil
-	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer("kb-server"))
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer("wikisql"))
 	if err != nil {
 		return ErrUnauthorized
 	}
@@ -154,7 +154,7 @@ func (m *Manager) Middleware() func(http.Handler) http.Handler {
 			}
 
 			if !authorized {
-				w.Header().Set("WWW-Authenticate", `Bearer realm="kb-server"`)
+				w.Header().Set("WWW-Authenticate", `Bearer realm="wikisql"`)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
 				json.NewEncoder(w).Encode(map[string]any{"error": ErrUnauthorized.Error()})

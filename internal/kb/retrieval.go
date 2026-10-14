@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/aicode/kb-server/internal/llm"
+	"github.com/Black0Bag/wikisql/internal/llm"
 )
 
 type SearchRequest struct {

@@ -271,3 +271,33 @@ func TestResolveBackupDirRelative(t *testing.T) {
 		t.Errorf("resolved path should be under %s, got %s", dir, resolved)
 	}
 }
+
+func TestListTablesHidesShadowTables(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// 迁移已创建 kb_chunks_fts（FTS5 虚拟表），验证其影子表被隐藏
+	tables, err := s.ListTables(ctx)
+	if err != nil {
+		t.Fatalf("ListTables: %v", err)
+	}
+
+	found := map[string]bool{}
+	for _, name := range tables {
+		found[name] = true
+	}
+
+	// 虚拟表本身应可见（用户可用 MATCH 查询）
+	if !found["kb_chunks_fts"] {
+		t.Error("kb_chunks_fts virtual table should be listed")
+	}
+	// 影子表应被隐藏
+	for _, shadow := range []string{
+		"kb_chunks_fts_data", "kb_chunks_fts_idx", "kb_chunks_fts_content",
+		"kb_chunks_fts_docsize", "kb_chunks_fts_config",
+	} {
+		if found[shadow] {
+			t.Errorf("shadow table %s should be hidden", shadow)
+		}
+	}
+}
