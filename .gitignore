@@ -24,3 +24,4 @@ fake_openai.py
 *.swp
 .aicode/memory/
 .aicode/
+mcp-schema-dump

@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -41,170 +42,213 @@ func (s *Server) Handler() http.Handler {
 	}, &mcp.StreamableHTTPOptions{Stateless: true})
 }
 
-// register 注册全部工具。读工具默认开放；写工具按配置开关。
+// register 注册全部工具。所有 schema 手写为最简兼容格式（单一类型字符串，
+// 无 additionalProperties、无联合类型），确保所有 OpenAI 兼容 API 都能接受。
 func (s *Server) register(allowWrites bool) {
-	mcp.AddTool(s.mcp, &mcp.Tool{
-		Name:        "db_list_tables",
-		Description: "列出数据库中所有用户表（不含 SQLite 内部表）。",
-	}, func(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
-		tables, err := s.tables.ListTables(ctx)
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, map[string]any{"tables": tables}, nil
-	})
-
-	type schemaArgs struct {
-		Table string `json:"table" jsonschema:"表名"`
+	tool := func(name, desc, schema string, handler mcp.ToolHandler) {
+		s.mcp.AddTool(&mcp.Tool{
+			Name:        name,
+			Description: desc,
+			InputSchema: json.RawMessage(schema),
+		}, handler)
 	}
-	mcp.AddTool(s.mcp, &mcp.Tool{
-		Name:        "db_get_schema",
-		Description: "查看指定表的建表语句（DDL）。",
-	}, func(ctx context.Context, req *mcp.CallToolRequest, args schemaArgs) (*mcp.CallToolResult, any, error) {
-		schema, err := s.tables.GetSchema(ctx, args.Table)
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, map[string]any{"table": args.Table, "schema": schema}, nil
-	})
 
-	type selectArgs struct {
-		Table   string         `json:"table" jsonschema:"表名"`
-		Columns []string       `json:"columns,omitempty" jsonschema:"要返回的列，留空返回全部"`
-		Where   map[string]any `json:"where,omitempty" jsonschema:"等值过滤条件"`
-		OrderBy string         `json:"order_by,omitempty" jsonschema:"排序字段"`
-		Limit   int            `json:"limit,omitempty" jsonschema:"返回行数上限，默认 50"`
-	}
-	mcp.AddTool(s.mcp, &mcp.Tool{
-		Name:        "db_select",
-		Description: "按条件查询任意表（只读）。默认最多返回 50 行。",
-	}, func(ctx context.Context, req *mcp.CallToolRequest, args selectArgs) (*mcp.CallToolResult, any, error) {
-		if args.Limit <= 0 {
-			args.Limit = 50
+	getArgs := func(req *mcp.CallToolRequest) map[string]any {
+		if req.Params == nil || len(req.Params.Arguments) == 0 {
+			return map[string]any{}
 		}
-		resp, err := s.tables.Execute(ctx, &table.QueryRequest{
-			Table:     args.Table,
-			Operation: "select",
-			Columns:   args.Columns,
-			Where:     args.Where,
-			OrderBy:   args.OrderBy,
-			Limit:     args.Limit,
+		var m map[string]any
+		if err := json.Unmarshal(req.Params.Arguments, &m); err != nil {
+			return map[string]any{}
+		}
+		return m
+	}
+
+	getString := func(args map[string]any, key string) string {
+		if v, ok := args[key].(string); ok {
+			return v
+		}
+		return ""
+	}
+	getFloat := func(args map[string]any, key string) float64 {
+		if v, ok := args[key].(float64); ok {
+			return v
+		}
+		return 0
+	}
+	getSlice := func(args map[string]any, key string) []any {
+		if v, ok := args[key].([]any); ok {
+			return v
+		}
+		return nil
+	}
+	getMap := func(args map[string]any, key string) map[string]any {
+		if v, ok := args[key].(map[string]any); ok {
+			return v
+		}
+		return nil
+	}
+
+	// ── 数据库工具 ──
+
+	tool("db_list_tables", "列出数据库中所有用户表（不含 SQLite 内部表）。",
+		`{"type":"object","properties":{}}`,
+		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			tables, err := s.tables.ListTables(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return s.jsonResult(map[string]any{"tables": tables})
 		})
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, resp, nil
-	})
+
+	tool("db_get_schema", "查看指定表的建表语句（DDL）。",
+		`{"type":"object","properties":{"table":{"type":"string","description":"表名"}},"required":["table"]}`,
+		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args := getArgs(req)
+			schema, err := s.tables.GetSchema(ctx, getString(args, "table"))
+			if err != nil {
+				return nil, err
+			}
+			return s.jsonResult(map[string]any{"table": getString(args, "table"), "schema": schema})
+		})
+
+	tool("db_select", "按条件查询任意表（只读）。默认最多返回 50 行。",
+		`{"type":"object","properties":{"table":{"type":"string","description":"表名"},"columns":{"type":"array","items":{"type":"string"},"description":"要返回的列，留空返回全部"},"where":{"type":"object","description":"等值过滤条件"},"order_by":{"type":"string","description":"排序字段"},"limit":{"type":"integer","description":"返回行数上限，默认 50"}},"required":["table"]}`,
+		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args := getArgs(req)
+			limit := int(getFloat(args, "limit"))
+			if limit <= 0 {
+				limit = 50
+			}
+			var columns []string
+			for _, c := range getSlice(args, "columns") {
+				if s, ok := c.(string); ok {
+					columns = append(columns, s)
+				}
+			}
+			resp, err := s.tables.Execute(ctx, &table.QueryRequest{
+				Table:     getString(args, "table"),
+				Operation: "select",
+				Columns:   columns,
+				Where:     getMap(args, "where"),
+				OrderBy:   getString(args, "order_by"),
+				Limit:     limit,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return s.jsonResult(resp)
+		})
 
 	if allowWrites {
-		type insertArgs struct {
-			Table  string         `json:"table" jsonschema:"表名"`
-			Values map[string]any `json:"values" jsonschema:"要插入的字段与值"`
-		}
-		mcp.AddTool(s.mcp, &mcp.Tool{
-			Name:        "db_insert",
-			Description: "向指定表插入一行。",
-		}, func(ctx context.Context, req *mcp.CallToolRequest, args insertArgs) (*mcp.CallToolResult, any, error) {
-			resp, err := s.tables.Execute(ctx, &table.QueryRequest{
-				Table: args.Table, Operation: "insert", Values: args.Values,
+		tool("db_insert", "向指定表插入一行。",
+			`{"type":"object","properties":{"table":{"type":"string","description":"表名"},"values":{"type":"object","description":"字段与值"}},"required":["table","values"]}`,
+			func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				args := getArgs(req)
+				resp, err := s.tables.Execute(ctx, &table.QueryRequest{
+					Table: getString(args, "table"), Operation: "insert", Values: getMap(args, "values"),
+				})
+				if err != nil {
+					return nil, err
+				}
+				return s.jsonResult(resp)
 			})
-			if err != nil {
-				return nil, nil, err
-			}
-			return nil, resp, nil
-		})
 
-		type updateArgs struct {
-			Table  string         `json:"table" jsonschema:"表名"`
-			Values map[string]any `json:"values" jsonschema:"要更新的字段与值"`
-			Where  map[string]any `json:"where" jsonschema:"更新条件（必填，防误改全表）"`
-		}
-		mcp.AddTool(s.mcp, &mcp.Tool{
-			Name:        "db_update",
-			Description: "按条件更新指定表的行。",
-		}, func(ctx context.Context, req *mcp.CallToolRequest, args updateArgs) (*mcp.CallToolResult, any, error) {
-			resp, err := s.tables.Execute(ctx, &table.QueryRequest{
-				Table: args.Table, Operation: "update", Values: args.Values, Where: args.Where,
+		tool("db_update", "按条件更新指定表的行。",
+			`{"type":"object","properties":{"table":{"type":"string","description":"表名"},"values":{"type":"object","description":"新值"},"where":{"type":"object","description":"条件（必填防误改）"}},"required":["table","values","where"]}`,
+			func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				args := getArgs(req)
+				resp, err := s.tables.Execute(ctx, &table.QueryRequest{
+					Table: getString(args, "table"), Operation: "update", Values: getMap(args, "values"), Where: getMap(args, "where"),
+				})
+				if err != nil {
+					return nil, err
+				}
+				return s.jsonResult(resp)
 			})
-			if err != nil {
-				return nil, nil, err
-			}
-			return nil, resp, nil
-		})
 
-		type deleteArgs struct {
-			Table string         `json:"table" jsonschema:"表名"`
-			Where map[string]any `json:"where" jsonschema:"删除条件（必填，防误删全表）"`
-		}
-		mcp.AddTool(s.mcp, &mcp.Tool{
-			Name:        "db_delete",
-			Description: "按条件删除指定表的行。",
-		}, func(ctx context.Context, req *mcp.CallToolRequest, args deleteArgs) (*mcp.CallToolResult, any, error) {
-			resp, err := s.tables.Execute(ctx, &table.QueryRequest{
-				Table: args.Table, Operation: "delete", Where: args.Where,
+		tool("db_delete", "按条件删除指定表的行。",
+			`{"type":"object","properties":{"table":{"type":"string","description":"表名"},"where":{"type":"object","description":"条件（必填防误删）"}},"required":["table","where"]}`,
+			func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				args := getArgs(req)
+				resp, err := s.tables.Execute(ctx, &table.QueryRequest{
+					Table: getString(args, "table"), Operation: "delete", Where: getMap(args, "where"),
+				})
+				if err != nil {
+					return nil, err
+				}
+				return s.jsonResult(resp)
 			})
-			if err != nil {
-				return nil, nil, err
-			}
-			return nil, resp, nil
-		})
 	}
+
+	// ── 知识库工具 ──
 
 	if s.kb != nil {
-		type collectionArgs struct{}
-		mcp.AddTool(s.mcp, &mcp.Tool{
-			Name:        "kb_list_collections",
-			Description: "列出知识库的全部集合（工作区）。",
-		}, func(ctx context.Context, req *mcp.CallToolRequest, _ collectionArgs) (*mcp.CallToolResult, any, error) {
-			cols, err := s.kb.ListCollections(ctx)
-			if err != nil {
-				return nil, nil, err
-			}
-			return nil, map[string]any{"collections": cols}, nil
-		})
-
-		type searchArgs struct {
-			Query         string  `json:"query" jsonschema:"搜索问题或关键词"`
-			CollectionIDs []int64 `json:"collection_ids,omitempty" jsonschema:"限定搜索的集合 ID，留空搜索全部"`
-			TopK          int     `json:"top_k,omitempty" jsonschema:"返回条数，默认 5"`
-			Mode          string  `json:"mode,omitempty" jsonschema:"hybrid 混合（默认）/keyword 关键词/semantic 语义"`
-		}
-		mcp.AddTool(s.mcp, &mcp.Tool{
-			Name:        "kb_search",
-			Description: "在知识库中检索：中文全文检索 + 向量语义双路融合（RRF）。",
-		}, func(ctx context.Context, req *mcp.CallToolRequest, args searchArgs) (*mcp.CallToolResult, any, error) {
-			resp, err := s.kb.Search(ctx, &kb.SearchRequest{
-				Query:         args.Query,
-				CollectionIDs: args.CollectionIDs,
-				TopK:          args.TopK,
-				Mode:          args.Mode,
+		tool("kb_list_collections", "列出知识库的全部集合（工作区）。",
+			`{"type":"object","properties":{}}`,
+			func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				cols, err := s.kb.ListCollections(ctx)
+				if err != nil {
+					return nil, err
+				}
+				return s.jsonResult(map[string]any{"collections": cols})
 			})
-			if err != nil {
-				return nil, nil, err
-			}
-			return nil, resp, nil
-		})
 
-		type chatArgs struct {
-			Query         string  `json:"query" jsonschema:"要问的问题"`
-			CollectionIDs []int64 `json:"collection_ids,omitempty" jsonschema:"限定问答范围"`
-		}
-		mcp.AddTool(s.mcp, &mcp.Tool{
-			Name:        "kb_chat",
-			Description: "基于知识库内容回答问题，输出带 [n] 引用标记及引用来源。",
-		}, func(ctx context.Context, req *mcp.CallToolRequest, args chatArgs) (*mcp.CallToolResult, any, error) {
-			resp, err := s.kb.Chat(ctx, &kb.SearchRequest{
-				Query:         args.Query,
-				CollectionIDs: args.CollectionIDs,
+		tool("kb_search", "在知识库中检索：中文全文检索 + 向量语义双路融合（RRF）。",
+			`{"type":"object","properties":{"query":{"type":"string","description":"搜索问题或关键词"},"collection_ids":{"type":"array","items":{"type":"integer"},"description":"限定集合 ID，留空搜全部"},"top_k":{"type":"integer","description":"返回条数，默认 5"},"mode":{"type":"string","description":"hybrid 混合（默认）/keyword 关键词/semantic 语义"}},"required":["query"]}`,
+			func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				args := getArgs(req)
+				var collectionIDs []int64
+				for _, v := range getSlice(args, "collection_ids") {
+					if f, ok := v.(float64); ok {
+						collectionIDs = append(collectionIDs, int64(f))
+					}
+				}
+				resp, err := s.kb.Search(ctx, &kb.SearchRequest{
+					Query:         getString(args, "query"),
+					CollectionIDs: collectionIDs,
+					TopK:          int(getFloat(args, "top_k")),
+					Mode:          getString(args, "mode"),
+				})
+				if err != nil {
+					return nil, err
+				}
+				return s.jsonResult(resp)
 			})
-			if err != nil {
-				return nil, nil, err
-			}
-			return nil, resp, nil
-		})
+
+		tool("kb_chat", "基于知识库内容回答问题，输出带 [n] 引用标记及引用来源。",
+			`{"type":"object","properties":{"query":{"type":"string","description":"要问的问题"},"collection_ids":{"type":"array","items":{"type":"integer"},"description":"限定问答范围"}},"required":["query"]}`,
+			func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				args := getArgs(req)
+				var collectionIDs []int64
+				for _, v := range getSlice(args, "collection_ids") {
+					if f, ok := v.(float64); ok {
+						collectionIDs = append(collectionIDs, int64(f))
+					}
+				}
+				resp, err := s.kb.Chat(ctx, &kb.SearchRequest{
+					Query:         getString(args, "query"),
+					CollectionIDs: collectionIDs,
+				})
+				if err != nil {
+					return nil, err
+				}
+				return s.jsonResult(resp)
+			})
 	}
 
-	s.logger.Info("MCP tools registered", "allow_writes", allowWrites, "kb_enabled", s.kb != nil)
+	s.logger.Info("MCP tools registered (explicit schemas)", "allow_writes", allowWrites, "kb_enabled", s.kb != nil)
+}
+
+// jsonResult 把任意值序列化为 MCP CallToolResult 的文本内容。
+func (s *Server) jsonResult(v any) (*mcp.CallToolResult, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: string(b)}},
+	}, nil
 }
 
 var _ = fmt.Sprintf
