@@ -26,7 +26,7 @@ type Server struct {
 
 func New(tables *table.Service, kbSvc *kb.Service, cfg Config, logger *slog.Logger) *Server {
 	s := &Server{
-		mcp:    mcp.NewServer(&mcp.Implementation{Name: "wikisql", Version: "0.2.0"}, nil),
+		mcp:    mcp.NewServer(&mcp.Implementation{Name: "wikisql", Version: "0.3.0"}, nil),
 		tables: tables,
 		kb:     kbSvc,
 		logger: logger,

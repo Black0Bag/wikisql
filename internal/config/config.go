@@ -12,12 +12,19 @@ type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Database DatabaseConfig `yaml:"database"`
 	Auth     AuthConfig     `yaml:"auth"`
+	Admin    AdminConfig    `yaml:"admin"`
 	Files    FilesConfig    `yaml:"files"`
 	LLM      LLMConfig      `yaml:"llm"`
 	Health   HealthConfig   `yaml:"health"`
 	KB       KBConfig       `yaml:"kb"`
 	MCP      MCPConfig      `yaml:"mcp"`
 	Security SecurityConfig `yaml:"security"`
+}
+
+type AdminConfig struct {
+	Enabled         bool   `yaml:"enabled"`
+	PasswordHash    string `yaml:"password_hash"`
+	SessionTTLHours int    `yaml:"session_ttl_hours"`
 }
 
 type MCPConfig struct {
@@ -108,6 +115,10 @@ func Default() *Config {
 			EmbedBatchSize: 32,
 			ContextHeaders: false,
 		},
+		Admin: AdminConfig{
+			Enabled:         true,
+			SessionTTLHours: 24,
+		},
 		MCP: MCPConfig{
 			Enabled:     true,
 			AllowWrites: false,
@@ -127,7 +138,7 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			applyEnvOverrides(cfg)
-			if err := cfg.validate(); err != nil {
+			if err := cfg.Validate(); err != nil {
 				return nil, err
 			}
 			return cfg, nil
@@ -141,7 +152,7 @@ func Load(path string) (*Config, error) {
 
 	applyEnvOverrides(cfg)
 
-	if err := cfg.validate(); err != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
@@ -181,7 +192,7 @@ func applyEnvOverrides(cfg *Config) {
 	}
 }
 
-func (c *Config) validate() error {
+func (c *Config) Validate() error {
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
 		return fmt.Errorf("invalid server port: %d", c.Server.Port)
 	}

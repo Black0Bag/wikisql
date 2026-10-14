@@ -278,3 +278,27 @@ func (s *Store) TableRowCount(ctx context.Context, tableName string) (int64, err
 	).Scan(&count)
 	return count, err
 }
+
+// RecentHealthChecks 返回最近 n 条巡检记录（管理面板状态页用）。
+func (s *Store) RecentHealthChecks(ctx context.Context, n int) ([]map[string]any, error) {
+	rows, err := s.reader.QueryContext(ctx,
+		`SELECT created_at, check_name, status, severity, COALESCE(message,'')
+		 FROM health_checks ORDER BY id DESC LIMIT ?`, n)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []map[string]any
+	for rows.Next() {
+		var createdAt, name, status, severity, message string
+		if err := rows.Scan(&createdAt, &name, &status, &severity, &message); err != nil {
+			return nil, err
+		}
+		out = append(out, map[string]any{
+			"time": createdAt, "check": name, "status": status,
+			"severity": severity, "message": message,
+		})
+	}
+	return out, nil
+}

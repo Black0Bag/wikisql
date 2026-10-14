@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Black0Bag/wikisql/internal/config"
+	"github.com/Black0Bag/wikisql/internal/admin"
 	"github.com/Black0Bag/wikisql/internal/auth"
 	"github.com/Black0Bag/wikisql/internal/health"
 	"github.com/Black0Bag/wikisql/internal/kb"
@@ -21,6 +22,8 @@ import (
 	"github.com/Black0Bag/wikisql/internal/store"
 	"github.com/Black0Bag/wikisql/internal/table"
 )
+
+const appVersion = "0.3.0"
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "配置文件路径")
@@ -67,6 +70,32 @@ func main() {
 		GlobalRPM:    cfg.Security.GlobalRPM,
 		LoginRPM:     cfg.Security.LoginRPM,
 	})
+
+	// 管理面板：独立密码 + 会话；首次启动自动生成初始密码（写入配置并打印一次）
+	if cfg.Admin.Enabled {
+		if cfg.Admin.PasswordHash == "" {
+			initPw, err := admin.GeneratePassword()
+			if err != nil {
+				logger.Error("failed to generate admin password", "err", err)
+				os.Exit(1)
+			}
+			hash, err := admin.HashPassword(initPw)
+			if err != nil {
+				logger.Error("failed to hash admin password", "err", err)
+				os.Exit(1)
+			}
+			cfg.Admin.PasswordHash = hash
+			if err := config.WriteConfig(*configPath, cfg); err != nil {
+				logger.Warn("failed to persist admin password to config", "err", err)
+			}
+			logger.Warn("=========================================================")
+			logger.Warn("管理面板初始密码（请登录 /admin 后立即修改）", "password", initPw)
+			logger.Warn("=========================================================")
+		}
+		adminMgr := admin.NewManager(cfg, *configPath, s, appVersion, logger)
+		apiServer.SetAdmin(adminMgr)
+		logger.Info("admin panel enabled", "path", "/admin")
+	}
 
 	// 鉴权：启用后 /api/v1/*（除登录）与 /mcp 都需要 Bearer token
 	// API Key 模式（推荐自用）：配置 auth.api_key，所有请求直接用它当 Bearer 值，永不过期

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Black0Bag/wikisql/internal/admin"
 	"github.com/Black0Bag/wikisql/internal/auth"
 	"github.com/Black0Bag/wikisql/internal/kb"
 	"github.com/Black0Bag/wikisql/internal/store"
@@ -23,6 +24,7 @@ type Server struct {
 	kbRoutes func(r chi.Router)
 	authMgr  *auth.Manager
 	mcpHdl   http.Handler
+	admin    *admin.Manager
 	security SecurityOptions
 }
 
@@ -40,8 +42,9 @@ func New(tables *table.Service, s *store.Store, logger *slog.Logger) *Server {
 	}
 }
 
-func (s *Server) SetAuth(m *auth.Manager)      { s.authMgr = m }
-func (s *Server) SetMCP(h http.Handler)        { s.mcpHdl = h }
+func (s *Server) SetAuth(m *auth.Manager)       { s.authMgr = m }
+func (s *Server) SetMCP(h http.Handler)         { s.mcpHdl = h }
+func (s *Server) SetAdmin(m *admin.Manager)     { s.admin = m }
 func (s *Server) SetSecurity(o SecurityOptions) { s.security = o }
 
 type apiHandler func(w http.ResponseWriter, r *http.Request) error
@@ -103,6 +106,15 @@ func (s *Server) Routes() http.Handler {
 		if s.authMgr != nil {
 			r.Use(s.authMgr.Middleware())
 		}
+	}
+
+	// 管理面板（独立密码会话鉴权；登录端点单独严格限流防爆破）
+	if s.admin != nil {
+		adminLoginRPM := s.security.LoginRPM
+		if adminLoginRPM <= 0 {
+			adminLoginRPM = 5
+		}
+		s.admin.Routes(r, RateLimitStrict(adminLoginRPM))
 	}
 
 	// 认证
