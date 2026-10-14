@@ -150,7 +150,7 @@ func (c *Checker) checkFiles(ctx context.Context) {
 
 func (c *Checker) checkWAL(ctx context.Context) {
 	walSize := c.store.WALSize()
-	if walSize > 64*1024*1024 {
+	if walSize > 16*1024*1024 {
 		if err := c.store.Checkpoint(ctx); err != nil {
 			c.record(ctx, "wal", "error", "warning", "checkpoint failed", err.Error())
 		} else {

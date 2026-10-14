@@ -32,6 +32,7 @@ pragmaParams.Add("_pragma", "journal_mode(WAL)")
 pragmaParams.Add("_pragma", "busy_timeout(5000)")
 pragmaParams.Add("_pragma", "foreign_keys(1)")
 pragmaParams.Add("_pragma", "synchronous(NORMAL)")
+pragmaParams.Add("_pragma", "wal_autocheckpoint(500)")
 
 writerDSN := fmt.Sprintf("file:%s?_txlock=immediate&%s", dbPath, pragmaParams.Encode())
 readerDSN := fmt.Sprintf("file:%s?%s", dbPath, pragmaParams.Encode())
