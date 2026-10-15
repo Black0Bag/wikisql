@@ -114,7 +114,7 @@ func (s *Server) Routes() http.Handler {
 		if adminLoginRPM <= 0 {
 			adminLoginRPM = 5
 		}
-		s.admin.Routes(r, RateLimitStrict(adminLoginRPM))
+		s.admin.Routes(r, s.admin.SecretPath(), RateLimitStrict(adminLoginRPM))
 	}
 
 	// 认证

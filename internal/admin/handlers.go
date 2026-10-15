@@ -14,14 +14,24 @@ type APIError struct {
 	Code  int    `json:"-"`
 }
 
-// Routes 挂载管理面板路由。r 为 httpapi 的受安全中间件保护的路由器。
+// Routes 挂载管理面板路由。secretPath 为二次后缀（/admin/<secretPath>）。
+// 访问 /admin 或 /admin/ 返回伪装错误页；只有 /admin/<secretPath> 才是真实入口。
 // loginMiddleware 为登录端点的额外严格限流（可为 nil）。
-func (m *Manager) Routes(r chi.Router, loginMiddleware func(http.Handler) http.Handler) {
-	r.Get("/admin", m.serveIndex)
-	r.Get("/admin/", m.serveIndex)
+func (m *Manager) Routes(r chi.Router, secretPath string, loginMiddleware func(http.Handler) http.Handler) {
+	basePath := "/admin/" + secretPath
 
-	r.Route("/admin/api", func(r chi.Router) {
-		// 登录：无需会话，套用调用方提供的严格限流
+	// 伪装路由：/admin 和 /admin/ 返回 404 风格页面（不暴露管理面板存在）
+	r.Get("/admin", serveDecoy)
+	r.Get("/admin/", serveDecoy)
+	// 其他 /admin/* 但不匹配 secretPath 的也走伪装（chi 自动 404 会暴露路由存在，
+	// 所以显式注册通配，Handle 不限方法，避免 405 泄露路由信息）
+	r.Handle("/admin/*", http.HandlerFunc(serveDecoy))
+
+	// 真实管理面板路由
+	r.Get(basePath, m.serveIndex)
+	r.Get(basePath+"/", m.serveIndex)
+
+	r.Route(basePath+"/api", func(r chi.Router) {
 		if loginMiddleware != nil {
 			r.With(loginMiddleware).Post("/login", m.handleLogin)
 		} else {
@@ -80,7 +90,7 @@ func (m *Manager) handleLogin(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,
-		Path:     "/admin",
+		Path:     "/admin/" + m.secretPath,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
 		Secure:   r.TLS != nil,
@@ -93,7 +103,7 @@ func (m *Manager) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		m.Logout(c.Value)
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/admin", MaxAge: -1, HttpOnly: true})
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/admin/" + m.secretPath, MaxAge: -1, HttpOnly: true})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -215,7 +225,7 @@ func (m *Manager) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 全部会话已失效，清 Cookie 让前端回登录页
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/admin", MaxAge: -1, HttpOnly: true})
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/admin/" + m.secretPath, MaxAge: -1, HttpOnly: true})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "message": "密码已更新，请重新登录"})
 }
 

@@ -24,6 +24,7 @@ type Config struct {
 type AdminConfig struct {
 	Enabled         bool   `yaml:"enabled"`
 	PasswordHash    string `yaml:"password_hash"`
+	SecretPath      string `yaml:"secret_path"`
 	SessionTTLHours int    `yaml:"session_ttl_hours"`
 }
 
@@ -117,6 +118,7 @@ func Default() *Config {
 		},
 		Admin: AdminConfig{
 			Enabled:         true,
+			SecretPath:      "",
 			SessionTTLHours: 24,
 		},
 		MCP: MCPConfig{
@@ -201,6 +203,15 @@ func (c *Config) Validate() error {
 	}
 	if c.Auth.Enabled && c.Auth.APIKey == "" && c.Auth.Password == "" {
 		return fmt.Errorf("auth enabled but both api_key and password are empty; set auth.api_key (recommended) or auth.password")
+	}
+	if c.Admin.Enabled && c.Admin.SecretPath != "" {
+		for _, r := range c.Admin.SecretPath {
+			if !(r == '_' || r == '-' ||
+				(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+				(r >= '0' && r <= '9')) {
+				return fmt.Errorf("admin.secret_path contains invalid character %q; only alphanumeric, underscore and hyphen allowed", r)
+			}
+		}
 	}
 	if c.isPublicHost() && !c.Auth.Enabled && !c.Server.AcknowledgeRisk {
 		msg := "server is configured to listen on a public address (" + c.Server.Host + ") without authentication; set acknowledge_risk: true in config to confirm you understand the risk"

@@ -44,6 +44,7 @@ func WriteConfig(path string, c *Config) error {
 	w("admin:\n")
 	w("  enabled: %s\n", bq(c.Admin.Enabled))
 	w("  password_hash: %s   # 管理面板密码（PBKDF2 哈希，不存明文）\n", q(c.Admin.PasswordHash))
+	w("  secret_path: %s      # 二次后缀（/admin/<secret_path>），留空=首次自动生成\n", q(c.Admin.SecretPath))
 	w("  session_ttl_hours: %d\n\n", c.Admin.SessionTTLHours)
 
 	w("files:\n")

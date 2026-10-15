@@ -2,7 +2,10 @@ package admin
 
 import (
 	"context"
+	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +13,7 @@ import (
 
 	"github.com/Black0Bag/wikisql/internal/config"
 	"github.com/Black0Bag/wikisql/internal/store"
+	"github.com/go-chi/chi/v5"
 )
 
 func testLogger() *slog.Logger {
@@ -151,4 +155,66 @@ func TestChangePassword(t *testing.T) {
 	if _, err := m.Login("newpassword123"); err != nil {
 		t.Errorf("new password should work: %v", err)
 	}
+}
+
+// ---- 二次后缀路由测试 ----
+
+func TestSecretPathRouting(t *testing.T) {
+	m, _ := testManager(t)
+	secret := "test-secret-path-xyz"
+	m.secretPath = secret
+
+	r := chi.NewRouter()
+	m.Routes(r, secret, nil)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	cases := []struct {
+		name     string
+		method   string
+		path     string
+		wantCode int
+		wantBody string // 期望包含的特征（空=不检查）
+	}{
+		{"伪装路径 /admin", "GET", "/admin", 404, "404 Not Found"},
+		{"伪装路径 /admin/（尾斜杠）", "GET", "/admin/", 404, "404 Not Found"},
+		{"伪装路径 /admin/wrong-suffix", "GET", "/admin/wrong-suffix", 404, "404 Not Found"},
+		{"伪装路径 /admin/api/login", "POST", "/admin/api/login", 404, "404 Not Found"},
+		{"正确后缀页面", "GET", "/admin/" + secret, 200, "wikisql 管理面板"},
+		{"正确后缀尾斜杠", "GET", "/admin/" + secret + "/", 200, "wikisql 管理面板"},
+		{"正确前缀 API（无密码应 401 说明到达处理）", "POST", "/admin/" + secret + "/api/login", 401, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := ""
+			code, b := doRequest(t, srv.URL+tc.path, tc.method, `{"password":"x"}`)
+			body = b
+			if code != tc.wantCode {
+				t.Errorf("%s %s = %d, want %d (body: %s)", tc.method, tc.path, code, tc.wantCode, body[:min(len(body), 100)])
+			}
+			if tc.wantBody != "" && !strings.Contains(body, tc.wantBody) {
+				t.Errorf("%s %s body missing %q, got: %s", tc.method, tc.path, tc.wantBody, body[:min(len(body), 150)])
+			}
+		})
+	}
+}
+
+func doRequest(t *testing.T, url, method, body string) (int, string) {
+	t.Helper()
+	req, _ := http.NewRequest(method, url, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

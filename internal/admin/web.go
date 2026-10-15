@@ -4,12 +4,38 @@ import (
 	"net/http"
 )
 
-// serveIndex 返回管理面板单页（前端为纯 HTML/CSS/JS，无构建步骤）。
+// serveDecoy 返回伪装 404 页面，不暴露管理面板的存在。
+func serveDecoy(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusNotFound)
+	w.Write([]byte(decoyHTML))
+}
+
+// serveIndex 返回管理面板单页。前端 JS 从 location.pathname 动态推断 API 基址。
 func (m *Manager) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Write([]byte(adminHTML))
 }
+
+const decoyHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>404 Not Found</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#1a1a2e;color:#6c7293;margin:0;padding:40px 20px;text-align:center;}
+h1{font-size:80px;margin:0;color:#16213e;font-weight:700;}
+p{font-size:16px;margin:10px 0;}
+.code{font-family:monospace;color:#0f3460;font-size:13px;margin-top:20px;}
+</style>
+</head>
+<body>
+<h1>404</h1>
+<p>The page you requested could not be found.</p>
+<div class="code">nginx/1.24.0</div>
+</body>
+</html>`
 
 const adminHTML = `<!DOCTYPE html>
 <html lang="zh">
@@ -193,7 +219,7 @@ function toast(msg, isErr) {
   t._timer = setTimeout(function () { t.className = "toast"; }, 3500);
 }
 async function api(path, opts) {
-  var resp = await fetch("/admin/api" + path, Object.assign({
+  var resp = await fetch(location.pathname.replace(/\/$/, "") + "/api" + path, Object.assign({
     headers: { "Content-Type": "application/json" },
   }, opts || {}));
   var data = await resp.json().catch(function () { return {}; });

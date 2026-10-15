@@ -71,8 +71,23 @@ func main() {
 		LoginRPM:     cfg.Security.LoginRPM,
 	})
 
-	// 管理面板：独立密码 + 会话；首次启动自动生成初始密码（写入配置并打印一次）
+	// 管理面板：独立密码 + 会话 + 二次后缀路径；首次启动自动生成并写入配置
 	if cfg.Admin.Enabled {
+		if cfg.Admin.SecretPath == "" {
+			secret, err := admin.GenerateSecretPath()
+			if err != nil {
+				logger.Error("failed to generate admin secret path", "err", err)
+				os.Exit(1)
+			}
+			cfg.Admin.SecretPath = secret
+			if err := config.WriteConfig(*configPath, cfg); err != nil {
+				logger.Warn("failed to persist admin secret path", "err", err)
+			}
+			logger.Warn("=====================================================================")
+			logger.Warn("管理面板地址", "path", "/admin/"+secret)
+			logger.Warn("（此地址是管理面板的唯一入口，请保存；错误后缀将看到伪造的 404 页面）")
+			logger.Warn("=====================================================================")
+		}
 		if cfg.Admin.PasswordHash == "" {
 			initPw, err := admin.GeneratePassword()
 			if err != nil {
@@ -94,7 +109,7 @@ func main() {
 		}
 		adminMgr := admin.NewManager(cfg, *configPath, s, appVersion, logger)
 		apiServer.SetAdmin(adminMgr)
-		logger.Info("admin panel enabled", "path", "/admin")
+		logger.Info("admin panel enabled", "path", "/admin/"+cfg.Admin.SecretPath)
 	}
 
 	// 鉴权：启用后 /api/v1/*（除登录）与 /mcp 都需要 Bearer token

@@ -79,6 +79,15 @@ func GeneratePassword() (string, error) {
 	return "admin-" + base64.RawURLEncoding.EncodeToString(b), nil
 }
 
+// GenerateSecretPath 生成 16 字符随机路径后缀（URL 安全字符）。
+func GenerateSecretPath() (string, error) {
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
 type session struct {
 	expiresAt time.Time
 }
@@ -88,6 +97,7 @@ type Manager struct {
 	mu        sync.Mutex
 	cfg       *config.Config
 	cfgPath   string
+	secretPath string
 	sessions  map[string]session
 	store     *store.Store
 	logger    *slog.Logger
@@ -97,13 +107,14 @@ type Manager struct {
 
 func NewManager(cfg *config.Config, cfgPath string, st *store.Store, version string, logger *slog.Logger) *Manager {
 	m := &Manager{
-		cfg:       cfg,
-		cfgPath:   cfgPath,
-		sessions:  make(map[string]session),
-		store:     st,
-		logger:    logger,
-		startTime: time.Now(),
-		version:   version,
+		cfg:        cfg,
+		cfgPath:    cfgPath,
+		secretPath: cfg.Admin.SecretPath,
+		sessions:   make(map[string]session),
+		store:      st,
+		logger:     logger,
+		startTime:  time.Now(),
+		version:    version,
 	}
 	go m.sessionJanitor()
 	return m
@@ -156,6 +167,13 @@ func (m *Manager) Logout(token string) {
 	m.mu.Lock()
 	delete(m.sessions, token)
 	m.mu.Unlock()
+}
+
+// SecretPath 返回当前管理面板的二次后缀路径。
+func (m *Manager) SecretPath() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.secretPath
 }
 
 // Authenticated 校验会话令牌。
