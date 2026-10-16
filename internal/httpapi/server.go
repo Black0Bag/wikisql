@@ -130,12 +130,15 @@ func (s *Server) Routes() http.Handler {
 		r.Group(func(r chi.Router) {
 			protected(r)
 			r.Get("/tables", apiHandler(s.handleListTables).ServeHTTP)
+			r.Post("/tables", apiHandler(s.handleCreateTable).ServeHTTP)
 			r.Get("/tables/{name}/schema", apiHandler(s.handleTableSchema).ServeHTTP)
+			r.Post("/tables/{name}/columns", apiHandler(s.handleAddColumn).ServeHTTP)
 			r.Post("/query", apiHandler(s.handleQuery).ServeHTTP)
 
 			r.Route("/tables/{name}/rows", func(r chi.Router) {
 				r.Get("/", apiHandler(s.handleListRows).ServeHTTP)
 				r.Post("/", apiHandler(s.handleInsertRow).ServeHTTP)
+				r.Delete("/", apiHandler(s.handleTruncateTable).ServeHTTP)
 				r.Get("/{rowid}", apiHandler(s.handleGetRow).ServeHTTP)
 				r.Put("/{rowid}", apiHandler(s.handleUpdateRow).ServeHTTP)
 				r.Delete("/{rowid}", apiHandler(s.handleDeleteRow).ServeHTTP)
@@ -300,4 +303,49 @@ func (s *Server) handleDeleteRow(w http.ResponseWriter, r *http.Request) error {
 func (s *Server) RegisterKB(svc *kb.Service) {
 	kbSrv := NewKB(svc)
 	s.kbRoutes = kbSrv.Routes
+}
+
+func (s *Server) handleCreateTable(w http.ResponseWriter, r *http.Request) error {
+	var req table.CreateTableRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return table.NewValidationError("invalid request body: " + err.Error())
+	}
+	resp, err := s.tables.CreateTable(r.Context(), &req)
+	if err != nil {
+		return err
+	}
+	if resp.Created {
+		writeJSON(w, http.StatusCreated, resp)
+	} else {
+		writeJSON(w, http.StatusOK, resp)
+	}
+	return nil
+}
+
+func (s *Server) handleAddColumn(w http.ResponseWriter, r *http.Request) error {
+	name := chi.URLParam(r, "name")
+	var req table.AddColumnRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return table.NewValidationError("invalid request body: " + err.Error())
+	}
+	resp, err := s.tables.AddColumn(r.Context(), name, &req)
+	if err != nil {
+		return err
+	}
+	if resp.Added {
+		writeJSON(w, http.StatusCreated, resp)
+	} else {
+		writeJSON(w, http.StatusOK, resp)
+	}
+	return nil
+}
+
+func (s *Server) handleTruncateTable(w http.ResponseWriter, r *http.Request) error {
+	name := chi.URLParam(r, "name")
+	resp, err := s.tables.Truncate(r.Context(), name)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, resp)
+	return nil
 }

@@ -51,6 +51,35 @@ paths:
       responses:
         '200':
           description: 表名列表
+    post:
+      summary: 建表（幂等，需 tables.allow_ddl: true）
+      description: |
+        CREATE TABLE IF NOT EXISTS。已存在时返回 200 created=false，
+        新建时返回 201 created=true。列类型限 INTEGER/TEXT/REAL/BLOB。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, columns]
+              properties:
+                name: { type: string }
+                columns:
+                  type: array
+                  items:
+                    type: object
+                    required: [name, type]
+                    properties:
+                      name: { type: string }
+                      type: { type: string, enum: [INTEGER, TEXT, REAL, BLOB] }
+                      primary_key: { type: boolean }
+                      not_null: { type: boolean }
+                      unique: { type: boolean }
+                      default: { type: string }
+      responses:
+        '201': { description: 新建 }
+        '200': { description: 已存在（幂等） }
   /api/v1/tables/{name}/schema:
     get:
       summary: 查看建表语句
@@ -80,6 +109,25 @@ paths:
       responses:
         '200': { description: 操作结果 }
         '400': { description: 参数校验失败（含注入拦截） }
+  /api/v1/tables/{name}/columns:
+    post:
+      summary: 加列（幂等，需 tables.allow_ddl: true）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type]
+              properties:
+                name: { type: string }
+                type: { type: string, enum: [INTEGER, TEXT, REAL, BLOB] }
+                not_null: { type: boolean }
+                default: { type: string, description: "NOT NULL 时必须提供（SQLite 限制）" }
+      responses:
+        '201': { description: 新加 }
+        '200': { description: 列已存在（幂等） }
+        '404': { description: 表不存在 }
   /api/v1/tables/{name}/rows:
     get:
       summary: 列出行
@@ -92,6 +140,11 @@ paths:
         '200': { description: 行数据 }
     post:
       summary: 插入一行
+    delete:
+      summary: 清空表全部行（需 tables.allow_ddl: true）
+      responses:
+        '200':
+          description: 已清空
       parameters:
         - { name: name, in: path, required: true, schema: { type: string } }
       requestBody:

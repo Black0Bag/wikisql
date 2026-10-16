@@ -9,7 +9,8 @@ import (
 )
 
 type Service struct {
-	store *store.Store
+	store    *store.Store
+	allowDDL bool
 }
 
 // ValidationError 表示请求参数不符合白名单或格式要求，HTTP 层应映射为 400。
@@ -26,8 +27,8 @@ func NewValidationError(msg string) error {
 	return &ValidationError{msg: msg}
 }
 
-func New(s *store.Store) *Service {
-	return &Service{store: s}
+func New(s *store.Store, allowDDL bool) *Service {
+	return &Service{store: s, allowDDL: allowDDL}
 }
 
 type QueryRequest struct {
@@ -37,6 +38,7 @@ type QueryRequest struct {
 	Values      map[string]any `json:"values,omitempty"`
 	Where       map[string]any `json:"where,omitempty"`
 	OrderBy     string         `json:"order_by,omitempty"`
+	OrderDesc   bool           `json:"order_desc,omitempty"`
 	Limit       int            `json:"limit,omitempty"`
 	Offset      int            `json:"offset,omitempty"`
 }
@@ -120,7 +122,11 @@ func (svc *Service) doSelect(ctx context.Context, req *QueryRequest) (*QueryResp
 		if err := validateIdentifier(req.OrderBy); err != nil {
 			return nil, fmt.Errorf("order_by %q: %w", req.OrderBy, err)
 		}
-		query += fmt.Sprintf(" ORDER BY \"%s\"", req.OrderBy)
+		dir := "ASC"
+		if req.OrderDesc {
+			dir = "DESC"
+		}
+		query += fmt.Sprintf(" ORDER BY \"%s\" %s", req.OrderBy, dir)
 	}
 
 	if req.Limit > 0 {

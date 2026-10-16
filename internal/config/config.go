@@ -19,6 +19,7 @@ type Config struct {
 	KB       KBConfig       `yaml:"kb"`
 	MCP      MCPConfig      `yaml:"mcp"`
 	Security SecurityConfig `yaml:"security"`
+	Tables   TablesConfig   `yaml:"tables"`
 }
 
 type AdminConfig struct {
@@ -37,6 +38,10 @@ type SecurityConfig struct {
 	MaxBodyBytes int64 `yaml:"max_body_bytes"`
 	GlobalRPM    int   `yaml:"global_rate_per_min"`
 	LoginRPM     int   `yaml:"login_rate_per_min"`
+}
+
+type TablesConfig struct {
+	AllowDDL bool `yaml:"allow_ddl"`
 }
 
 type KBConfig struct {
@@ -129,6 +134,9 @@ func Default() *Config {
 			MaxBodyBytes: 64 * 1024 * 1024,
 			GlobalRPM:    120,
 			LoginRPM:     5,
+		},
+		Tables: TablesConfig{
+			AllowDDL: false,
 		},
 	}
 }

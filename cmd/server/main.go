@@ -63,7 +63,7 @@ func main() {
 	checker.Start()
 	defer checker.Stop()
 
-	tablesSvc := table.New(s)
+	tablesSvc := table.New(s, cfg.Tables.AllowDDL)
 	apiServer := httpapi.New(tablesSvc, s, logger)
 	apiServer.SetSecurity(httpapi.SecurityOptions{
 		MaxBodyBytes: cfg.Security.MaxBodyBytes,

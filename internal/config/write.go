@@ -78,7 +78,10 @@ func WriteConfig(path string, c *Config) error {
 	w("security:\n")
 	w("  max_body_bytes: %d\n", c.Security.MaxBodyBytes)
 	w("  global_rate_per_min: %d\n", c.Security.GlobalRPM)
-	w("  login_rate_per_min: %d\n", c.Security.LoginRPM)
+	w("  login_rate_per_min: %d\n\n", c.Security.LoginRPM)
+
+	w("tables:\n")
+	w("  allow_ddl: %s   # 是否允许通过 API 建表/加列/清空表（上层组件接入时开启）\n", bq(c.Tables.AllowDDL))
 
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".config-*.tmp")

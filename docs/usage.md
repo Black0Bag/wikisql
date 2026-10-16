@@ -31,6 +31,15 @@
 ### 查看有哪些表
 curl http://YOUR_HOST:8210/api/v1/tables -H "Authorization: Bearer YOUR_API_KEY"
 
+### 建表（幂等，需 tables.allow_ddl: true）
+curl -X POST http://YOUR_HOST:8210/api/v1/tables -H "Authorization: Bearer YOUR_API_KEY" -H 'Content-Type: application/json' -d '{"name":"myapp_posts","columns":[{"name":"id","type":"INTEGER","primary_key":true},{"name":"title","type":"TEXT","not_null":true,"default":""}]}'
+
+### 加列（幂等，需 tables.allow_ddl: true）
+curl -X POST http://YOUR_HOST:8210/api/v1/tables/myapp_posts/columns -H "Authorization: Bearer YOUR_API_KEY" -H 'Content-Type: application/json' -d '{"name":"tags","type":"TEXT","not_null":true,"default":""}'
+
+### 清空表全部行（需 tables.allow_ddl: true）
+curl -X DELETE http://YOUR_HOST:8210/api/v1/tables/myapp_posts/rows -H "Authorization: Bearer YOUR_API_KEY"
+
 ### 查询一张表
 curl -X POST http://YOUR_HOST:8210/api/v1/query -H "Authorization: Bearer YOUR_API_KEY" -H 'Content-Type: application/json' -d '{"table":"kb_documents","operation":"select","limit":10}'
 
